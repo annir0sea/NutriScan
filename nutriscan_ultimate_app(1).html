@@ -180,7 +180,8 @@
                     <!-- Search Input & Camera Buttons -->
                     <div class="flex items-center space-x-2 bg-white p-2 rounded-2xl border border-[#7B2CBF]/30 shadow-sm">
                         <i class="fa-solid fa-search text-slate-400 pl-3"></i>
-                        <input type="text" id="globalProductSearch" oninput="filterGlobalProducts(this.value)" placeholder="Search (milk, berries, sourdough,)..." class="bg-transparent w-full px-2 py-2 text-sm focus:outline-none text-[#1a0f2e]">
+                        <input type="text" id="globalProductSearch" onkeydown="if(event.key==='Enter')filterGlobalProducts(this.value)" placeholder="Search (milk, berries, sourdough,)..." class="bg-transparent w-full px-2 py-2 text-sm focus:outline-none text-[#1a0f2e]">
+                        <button id="smsSearchButton" onclick="filterGlobalProducts(document.getElementById('globalProductSearch').value)" class="neon-btn px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap shadow-sm">Search Products</button>
                         <button onclick="openVisualSearchModal()" class="pastel-btn-1 px-3 py-2 rounded-xl text-xs font-bold whitespace-nowrap flex items-center space-x-1 shadow-sm">
                             <i class="fa-solid fa-camera-retro"></i>
                             <span class="hidden sm:inline">Visual Search</span>
@@ -774,7 +775,7 @@
         }
 
         window.onload = function() {
-            renderGlobalProducts(getDynamic20Products(''));
+            document.getElementById('globalProductGrid').textContent = 'Search for a product or barcode to see real supermarket matches.';
             renderStoreLocations(storeLocations);
             renderMyRecipes();
             renderCommunityRecipes();
@@ -900,9 +901,89 @@
             `).join('');
         }
 
-        function filterGlobalProducts(query) {
-            const list = getDynamic20Products(query);
-            renderGlobalProducts(list);
+        // Real imported Australian supermarket catalogue (Supabase, read-only).
+        // This is not a live retailer price feed. Prices are labelled by collection date.
+        const SMS_DB_URL = 'https://vrbiurbcqcesulupdhvq.supabase.co';
+        const SMS_PUBLIC_KEY = 'sb_publishable_u0o6CdBaD_kjta5OWJ6ubg_wMu2gYcu';
+        let smsSearchSeq = 0;
+        function smsText(parent, tag, value, css) {
+            const el = document.createElement(tag);
+            el.textContent = value === null || value === undefined ? '' : String(value);
+            if (css) el.className = css;
+            parent.appendChild(el);
+            return el;
+        }
+        function smsSafeImage(src) {
+            try { const url = new URL(String(src)); return url.protocol === 'https:' ? url.href : ''; }
+            catch { return ''; }
+        }
+        async function filterGlobalProducts(query) {
+            const grid = document.getElementById('globalProductGrid');
+            const btn = document.getElementById('smsSearchButton');
+            if (!grid) return;
+            const q = String(query || '').trim().slice(0, 100);
+            const seq = ++smsSearchSeq;
+            grid.replaceChildren();
+            if (q.length < 2) {
+                smsText(grid, 'p', 'Please enter at least 2 characters (e.g. milk or a barcode).', 'text-sm text-slate-600');
+                return;
+            }
+            if (btn) { btn.disabled = true; btn.textContent = 'Searching…'; }
+            smsText(grid, 'p', 'Searching Australian supermarket products…', 'text-sm text-slate-600');
+            try {
+                const controller = new AbortController();
+                const timer = setTimeout(() => controller.abort(), 16000);
+                let response;
+                try {
+                    response = await fetch(SMS_DB_URL + '/rest/v1/rpc/sms_search_imported_products', {
+                        method: 'POST',
+                        headers: { apikey: SMS_PUBLIC_KEY, 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ p_query: q, p_limit: 60 }),
+                        signal: controller.signal
+                    });
+                } finally { clearTimeout(timer); }
+                if (seq !== smsSearchSeq) return;
+                if (!response.ok) throw Error('Search service returned ' + response.status);
+                const rows = await response.json();
+                if (!Array.isArray(rows)) throw Error('Unexpected product response');
+                grid.replaceChildren();
+                if (!rows.length) {
+                    smsText(grid, 'p', 'No imported products matched. Try a different product name, brand or barcode.', 'text-sm text-slate-600');
+                    return;
+                }
+                for (const p of rows) {
+                    const card = document.createElement('div');
+                    card.className = 'card-bg rounded-3xl p-4 border border-slate-200 space-y-3 flex flex-col justify-between shadow-sm';
+                    const imgUrl = smsSafeImage(p.image_url);
+                    if (imgUrl) {
+                        const img = document.createElement('img');
+                        img.src = imgUrl; img.alt = String(p.name || 'Product');
+                        img.loading = 'lazy';
+                        img.className = 'w-full h-44 rounded-2xl object-contain bg-white';
+                        card.appendChild(img);
+                    }
+                    smsText(card, 'p', p.chain || 'Australian supermarket', 'text-[11px] font-bold text-purple-700');
+                    smsText(card, 'h4', p.name || 'Product', 'font-bold text-[#1a0f2e] text-sm');
+                    smsText(card, 'p', [p.brand,p.size].filter(Boolean).join(' · '), 'text-xs text-slate-600');
+                    smsText(card, 'p', p.department || '', 'text-xs text-slate-500');
+                    const price = Number(String(p.price || '').replace(/[^0-9.]/g, ''));
+                    const validPrice = Number.isFinite(price) && price > 0;
+                    smsText(card, 'p', validPrice ? ('$' + price.toFixed(2) + ' · recorded ' + (p.collected_date || 'date unknown')) : 'Price unavailable', 'font-bold text-[#7B2CBF] text-sm');
+                    if (p.barcode) smsText(card, 'p', 'Barcode: ' + p.barcode, 'text-[11px] text-slate-500');
+                    const add = document.createElement('button');
+                    add.type = 'button'; add.className = 'w-full pastel-btn-4 py-2 rounded-xl text-xs font-bold';
+                    add.textContent = 'Add to Shopping List';
+                    add.addEventListener('click', () => addToShoppingList(String(p.name || 'Product'), validPrice ? price : 0, String(p.chain || 'Supermarket')));
+                    card.appendChild(add);
+                    grid.appendChild(card);
+                }
+            } catch (e) {
+                if (seq !== smsSearchSeq) return;
+                grid.replaceChildren();
+                smsText(grid, 'p', 'Could not connect to the supermarket catalogue. Check your internet connection and try again. (' + (e.name === 'AbortError' ? 'Timed out' : e.message) + ')', 'text-sm text-red-700');
+            } finally {
+                if (seq === smsSearchSeq && btn) { btn.disabled = false; btn.textContent = 'Search Products'; }
+            }
         }
 
         function simulateLiveCameraScan() {
