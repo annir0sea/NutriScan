@@ -1,0 +1,19 @@
+{
+  "name": "scan-my-shop-prisma-deploy",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "bun build src/server.ts --target=bun --outfile dist/server.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@prisma/composer": "latest",
+    "@prisma/composer-prisma-cloud": "latest"
+  },
+  "devDependencies": {
+    "prisma": "8.0.0-rc.9",
+    "typescript": "latest",
+    "@types/bun": "latest"
+  }
+}
