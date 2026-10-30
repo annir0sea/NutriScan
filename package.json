@@ -8,12 +8,13 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@prisma/composer": "latest",
-    "@prisma/composer-prisma-cloud": "latest"
+    "@prisma/composer": "0.21.0",
+    "@prisma/composer-prisma-cloud": "0.21.0",
+    "@prisma/orm-postgres": "8.0.0-rc.11"
   },
   "devDependencies": {
-    "prisma": "8.0.0-rc.9",
-    "typescript": "latest",
+    "prisma": "8.0.0-rc.17",
+    "typescript": "5.9.3",
     "@types/bun": "latest"
   }
 }
