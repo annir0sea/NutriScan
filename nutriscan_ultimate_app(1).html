@@ -723,58 +723,20 @@
             { name: 'IGA Fresh - Fremantle', chain: 'IGA', suburb: 'Fremantle', address: 'High St Mall, Fremantle WA', hours: '6:00 AM - 10:00 PM', phone: '(08) 9335 1122', mapUrl: 'https://maps.google.com/?q=IGA+Fremantle', webUrl: 'https://www.iga.com.au' }
         ];
 
-        // 20 varied items generator per search with real product imagery
+        // Live product lookup: product metadata supplied by Open Food Facts.
+        // Supermarket prices, shelf availability and store locations are not supplied by this API.
+        let productSearchTimer;
+        let productSearchController;
+        let foundProducts = [];
+        const escapeProductHTML = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
         function getDynamic20Products(query) {
-            const cleanQuery = query ? query.trim() : 'fresh grocery';
-            const retailers = [
-                { store: 'Woolworths', location: 'Bondi Junction NSW' },
-                { store: 'Coles', location: 'Melbourne Central VIC' },
-                { store: 'ALDI', location: 'Perth City WA' },
-                { store: 'IGA', location: 'Brisbane City QLD' },
-                { store: 'Harris Farm Markets', location: 'Manly NSW' },
-                { store: 'Drakes', location: 'Toowoomba QLD' },
-                { store: 'Supabarn', location: 'Canberra ACT' },
-                { store: 'Naked Foods', location: 'Paddington NSW' },
-                { store: 'Flannerys Organic', location: 'Byron Bay NSW' },
-                { store: 'Healthylife', location: 'Sydney NSW' }
-            ];
-
-            const categories = ['Dairy', 'Produce', 'Bakery', 'Pantry', 'Meat & Seafood', 'Health Food', 'Snacks', 'Beverages'];
-            const realImages = [
-                'https://images.unsplash.com/photo-1550583724-b2692b85b150?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1464965911861-746a04b4bca6?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1589367920969-ab8e050bbc0f?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1523049673857-eb18f1d7b578?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1516467508483-a7212febe31a?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1519708227418-c8fd9a32b7a2?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1488477181946-6428a0291777?auto=format&fit=crop&w=400&q=80',
-                'https://images.unsplash.com/photo-1474979266404-7eaacbcd87c5?auto=format&fit=crop&w=400&q=80'
-            ];
-
-            let results = [];
-            for(let i = 1; i <= 20; i++) {
-                const retailer = retailers[(i - 1) % retailers.length];
-                const cat = categories[i % categories.length];
-                const img = realImages[i % realImages.length];
-                const price = Number((Math.random() * 15 + 2.50).toFixed(2));
-                const rating = Number((4.5 + Math.random() * 0.5).toFixed(1));
-                
-                results.push({
-                    id: i,
-                    name: `${i === 1 && query ? query.charAt(0).toUpperCase() + query.slice(1) : 'Organic ' + cleanQuery + ' Item #' + i}`,
-                    category: cat,
-                    price: price,
-                    store: retailer.store,
-                    location: retailer.location,
-                    rating: rating,
-                    img: img
-                });
-            }
-            return results;
+            // Legacy compatibility: search is now asynchronous and never invents products.
+            filterGlobalProducts(query);
+            return [];
         }
 
         window.onload = function() {
-            renderGlobalProducts(getDynamic20Products(''));
+            renderGlobalProducts([]);
             renderStoreLocations(storeLocations);
             renderMyRecipes();
             renderCommunityRecipes();
@@ -873,36 +835,88 @@
             }
         }
 
-        // Render Product Search with 20 items per query
-        function renderGlobalProducts(list) {
+        // Product search: real results, robust empty/error states and request cancellation.
+        function renderGlobalProducts(list, message = '') {
             const grid = document.getElementById('globalProductGrid');
-            if(!grid) return;
-            grid.innerHTML = list.map(p => `
-                <div class="card-bg rounded-3xl p-4 border border-slate-200 space-y-3 flex flex-col justify-between shadow-sm">
-                    <div class="relative">
-                        <img src="${p.img}" alt="${p.name}" class="w-full h-44 rounded-2xl object-cover" onerror="this.src='https://placehold.co/300x200/fdf0f9/7B2CBF?text=NutriScan'">
-                        <span class="absolute top-3 left-3 bg-white/90 backdrop-blur-md text-[#7B2CBF] text-[10px] font-bold px-2.5 py-1 rounded-full border border-[#7B2CBF]/30 shadow-sm">${p.store}</span>
-                    </div>
-                    <div class="space-y-1">
-                        <span class="text-[10px] bg-[#9D4EDD]/10 text-[#9D4EDD] px-2.5 py-0.5 rounded-full font-bold">${p.category}</span>
-                        <h4 class="font-bold text-[#1a0f2e] text-sm line-clamp-1 mt-1">${p.name}</h4>
-                        <p class="text-[11px] text-slate-600"><i class="fa-solid fa-store mr-1 text-[#7B2CBF]"></i><strong>Shop:</strong> ${p.store} • <strong>Location:</strong> ${p.location}</p>
-                        <div class="flex items-center justify-between pt-1">
-                            <span class="text-base font-extrabold text-[#7B2CBF]">$${p.price.toFixed(2)}</span>
-                            <span class="text-xs text-amber-600"><i class="fa-solid fa-star mr-1"></i>${p.rating}</span>
-                        </div>
-                    </div>
-                    <button onclick="addToShoppingList('${p.name}', ${p.price}, '${p.store}')" class="w-full pastel-btn-4 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center space-x-1.5 shadow-sm">
-                        <i class="fa-solid fa-plus text-[#7B2CBF]"></i>
-                        <span>Add to List</span>
-                    </button>
-                </div>
-            `).join('');
+            if (!grid) return;
+            if (!list.length) {
+                grid.innerHTML = '<div class="col-span-full bg-white border border-slate-200 rounded-2xl p-6 text-center text-sm text-slate-600">' +
+                    escapeProductHTML(message || 'Search for a product name, brand or barcode to see real product records.') + '</div>';
+                return;
+            }
+            grid.innerHTML = list.map((p, i) => {
+                const name = escapeProductHTML(p.name);
+                const brand = escapeProductHTML(p.brand || 'Brand not provided');
+                const barcode = escapeProductHTML(p.barcode || 'Not available');
+                const category = escapeProductHTML(p.category || 'Grocery');
+                const image = p.img && /^https:\/\/(?:images\.openfoodfacts\.org|static\.openfoodfacts\.org)\//.test(p.img) ? p.img : '';
+                return '<div class="card-bg rounded-3xl p-4 border border-slate-200 space-y-3 flex flex-col justify-between shadow-sm">' +
+                  (image ? '<img src="' + escapeProductHTML(image) + '" alt="' + name + '" loading="lazy" class="w-full h-44 rounded-2xl object-contain bg-white">' :
+                  '<div class="w-full h-44 rounded-2xl bg-slate-100 flex items-center justify-center text-xs text-slate-500">No product image</div>') +
+                  '<div class="space-y-1"><span class="text-[10px] text-[#7B2CBF] font-bold">' + category + '</span>' +
+                  '<h4 class="font-bold text-[#1a0f2e] text-sm">' + name + '</h4>' +
+                  '<p class="text-xs text-slate-600">' + brand + '</p>' +
+                  '<p class="text-xs text-slate-500">Barcode: ' + barcode + '</p>' +
+                  '<p class="text-xs text-slate-500">Supermarket price and availability: not verified</p>' +
+                  '<p class="text-[10px] text-slate-500">Source: Open Food Facts (community-contributed)</p></div>' +
+                  '<button type="button" onclick="addFoundProductToShoppingList(' + i + ')" class="w-full pastel-btn-4 py-2 rounded-xl text-xs font-bold">+ Add to List</button></div>';
+            }).join('');
+        }
+
+        function addFoundProductToShoppingList(index) {
+            const p = foundProducts[index];
+            if (!p) return;
+            shoppingList.push({name: p.name, price: 0, store: 'Store not confirmed', priceUnavailable: true});
+            updateShoppingListUI();
+            showToast('Added ' + p.name + ' — price not yet available');
         }
 
         function filterGlobalProducts(query) {
-            const list = getDynamic20Products(query);
-            renderGlobalProducts(list);
+            clearTimeout(productSearchTimer);
+            if (productSearchController) productSearchController.abort();
+            const q = String(query || '').trim();
+            if (!q) {
+                foundProducts = [];
+                renderGlobalProducts([]);
+                return;
+            }
+            if (q.length < 2) {
+                foundProducts = [];
+                renderGlobalProducts([], 'Enter at least 2 characters to search.');
+                return;
+            }
+            renderGlobalProducts([], 'Searching real product records…');
+            productSearchTimer = setTimeout(async () => {
+                const controller = new AbortController();
+                productSearchController = controller;
+                try {
+                    const url = 'https://world.openfoodfacts.org/cgi/search.pl?search_terms=' + encodeURIComponent(q) +
+                       '&search_simple=1&action=process&json=1&page_size=20&fields=code,product_name,brands,categories,image_front_small_url,image_front_url';
+                    const response = await fetch(url, {signal: controller.signal, headers: {'Accept': 'application/json'}});
+                    if (!response.ok) throw new Error('Product service returned ' + response.status);
+                    const data = await response.json();
+                    if (controller.signal.aborted) return;
+                    const seen = new Set();
+                    foundProducts = (data.products || []).filter(p => p.product_name && p.product_name.trim()).map(p => ({
+                        name: p.product_name.trim(),
+                        brand: p.brands || '',
+                        barcode: p.code || '',
+                        category: (p.categories || '').split(',')[0].trim(),
+                        img: p.image_front_small_url || p.image_front_url || ''
+                    })).filter(p => {
+                        const key = p.barcode || p.name.toLowerCase();
+                        if (seen.has(key)) return false;
+                        seen.add(key);
+                        return true;
+                    });
+                    renderGlobalProducts(foundProducts, 'No matching product records found. Try another product name, brand or barcode.');
+                } catch (error) {
+                    if (error.name === 'AbortError') return;
+                    foundProducts = [];
+                    renderGlobalProducts([], 'Product search is temporarily unavailable. Check your connection and try again.');
+                    console.error('Product search error:', error);
+                }
+            }, 350);
         }
 
         function simulateLiveCameraScan() {
@@ -1146,7 +1160,7 @@
         function updateShoppingListUI() {
             document.getElementById('listTotalCount').textContent = shoppingList.length;
             const total = shoppingList.reduce((acc, i) => acc + i.price, 0);
-            document.getElementById('listTotalPrice').textContent = `$${total.toFixed(2)}`;
+            document.getElementById('listTotalPrice').textContent = `${total.toFixed(2)}${shoppingList.some(i => i.priceUnavailable) ? ' + unpriced items' : ''}`;
 
             const container = document.getElementById('shoppingListContainer');
             if(!container) return;
@@ -1162,7 +1176,7 @@
                         <p class="text-slate-500">Store: ${item.store}</p>
                     </div>
                     <div class="flex items-center space-x-3">
-                        <span class="font-bold text-[#7B2CBF]">$${item.price.toFixed(2)}</span>
+                        <span class="font-bold text-[#7B2CBF]">${item.priceUnavailable ? "Price unavailable" : "$" + item.price.toFixed(2)}</span>
                         <button onclick="shoppingList.splice(${idx}, 1); updateShoppingListUI();" class="text-rose-500"><i class="fa-solid fa-trash"></i></button>
                     </div>
                 </div>
