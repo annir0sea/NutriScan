@@ -1,0 +1,3 @@
+# Scan My Shop - static Netlify deployment
+[build]
+  publish = "."
